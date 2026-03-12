@@ -4,36 +4,42 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import java.nio.file.*; import java.util.*;
 public class ColorChatManager {
     private final Path dataDir;
-    private final Map<String,ChatFormat> formats=new LinkedHashMap<>();
-    public ColorChatManager(Path d){this.dataDir=d;try{Files.createDirectories(d);}catch(Exception e){}loadDefaults();load();}
-    private void loadDefaults(){
-        formats.put("owner",new ChatFormat("owner","§4[Owner]","§c","§f"));
-        formats.put("admin",new ChatFormat("admin","§c[Admin]","§6","§f"));
-        formats.put("mod",new ChatFormat("mod","§2[Mod]","§a","§f"));
-        formats.put("vip",new ChatFormat("vip","§6[VIP]","§e","§f"));
-        formats.put("default",new ChatFormat("default","","§7","§f"));
+    // uuid → chosen color code
+    private final Map<UUID,String> playerColors=new HashMap<>();
+    // rank → allowed colors
+    private final Map<String,List<String>> rankColors=new LinkedHashMap<>();
+    public ColorChatManager(Path d){
+        this.dataDir=d;try{Files.createDirectories(d);}catch(Exception e){}
+        // Defaults
+        rankColors.put("vip",List.of("§a","§b","§d","§e","§6"));
+        rankColors.put("mvp",List.of("§a","§b","§c","§d","§e","§6","§5","§2"));
+        rankColors.put("admin",List.of("§0","§1","§2","§3","§4","§5","§6","§7","§8","§9","§a","§b","§c","§d","§e","§f"));
+        load();
     }
-    public int getRankCount(){return formats.size();}
-    public ChatFormat getFormat(String rank){return formats.getOrDefault(rank.toLowerCase(),formats.get("default"));}
-    public String formatMessage(String rank,String player,String message){return getFormat(rank).format(player,message);}
-    public void save(){try{StringBuilder sb=new StringBuilder();for(ChatFormat f:formats.values())sb.append(f.toConfig()).append("\n");Files.writeString(dataDir.resolve("formats.txt"),sb.toString());}catch(Exception e){}}
-    private void load(){try{Path f=dataDir.resolve("formats.txt");if(!Files.exists(f))return;formats.clear();loadDefaults();for(String l:Files.readAllLines(f)){ChatFormat cf=ChatFormat.fromConfig(l);if(cf!=null)formats.put(cf.getRank(),cf);}}catch(Exception e){}}
+    public String getPlayerColor(UUID uid){return playerColors.getOrDefault(uid,"§f");}
+    public void setColor(UUID uid,String code){playerColors.put(uid,code);save();}
+    public void save(){try{StringBuilder sb=new StringBuilder();for(var e:playerColors.entrySet())sb.append(e.getKey()+"|"+e.getValue()).append("\n");Files.writeString(dataDir.resolve("colors.txt"),sb.toString());}catch(Exception e){}}
+    private void load(){try{Path f=dataDir.resolve("colors.txt");if(!Files.exists(f))return;for(String l:Files.readAllLines(f)){String[]p=l.split("\\|",2);if(p.length==2)playerColors.put(UUID.fromString(p[0]),p[1]);};}catch(Exception e){}}
+    private static final Map<String,String> COLOR_NAMES=Map.of("red","§c","green","§a","blue","§9","yellow","§e","gold","§6","pink","§d","aqua","§b","white","§f","gray","§7","purple","§5");
     public AbstractPlayerCommand getColorChatCommand(){
-        return new AbstractPlayerCommand("chatformat","[Admin] Manage chat formats. /chatformat list|set <rank> <prefix> <nameColor> <msgColor>|preview <rank>"){
+        return new AbstractPlayerCommand("colorchat","Set your chat color. /colorchat <color|list>"){
             @Override protected void execute(CommandContext ctx,Store<EntityStore> store,Ref<EntityStore> ref,PlayerRef playerRef,World world){
-                String[]args=ctx.getInputString().trim().split("\\s+",5);
-                String sub=args.length>0?args[0].toLowerCase():"list";
-                switch(sub){
-                    case"list"->{playerRef.sendMessage(Message.raw("=== Chat Formats ==="));for(ChatFormat f:formats.values())playerRef.sendMessage(Message.raw("  §6"+f.getRank()+"§r: "+f.format("Player","Hello world!")));}
-                    case"preview"->{if(args.length<2)break;playerRef.sendMessage(Message.raw(getFormat(args[1]).format(playerRef.getUsername(),"Preview message")));}
-                    case"set"->{if(args.length<5){playerRef.sendMessage(Message.raw("Usage: /chatformat set <rank> <prefix> <nameColor> <msgColor>"));break;}ChatFormat cf=new ChatFormat(args[1],args[2],args[3],args[4]);formats.put(args[1].toLowerCase(),cf);save();playerRef.sendMessage(Message.raw("[ColorChat] Format set for: "+args[1]));}
-                    default->playerRef.sendMessage(Message.raw("Usage: /chatformat list | preview <rank> | set <rank> <prefix> <nameColor> <msgColor>"));
+                String arg=ctx.getInputString().trim().toLowerCase();
+                if(arg.isEmpty()||arg.equals("list")){
+                    playerRef.sendMessage(Message.raw("[ColorChat] Available colors: red, green, blue, yellow, gold, pink, aqua, white, gray, purple"));
+                    playerRef.sendMessage(Message.raw("[ColorChat] Current: "+getPlayerColor(playerRef.getUuid())+"■§r /colorchat <name>"));
+                    return;
                 }
+                String code=COLOR_NAMES.get(arg);
+                if(code==null){playerRef.sendMessage(Message.raw("[ColorChat] Unknown color. Use /colorchat list"));return;}
+                setColor(playerRef.getUuid(),code);
+                playerRef.sendMessage(Message.raw("[ColorChat] Chat color set to "+code+arg+"§r!"));
             }
         };
     }
